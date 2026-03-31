@@ -36,3 +36,8 @@ Thumbs.db
 
 # Render / Docker temp
 *.sqlite3
+
+temp/
+uploads/
+*.jpeg
+*.jpg
