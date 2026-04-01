@@ -6,3 +6,6 @@ opencv-python-headless
 pillow
 numpy
 pyzbar
+easyocr
+torch
+torchvision

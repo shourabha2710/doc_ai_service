@@ -3,9 +3,6 @@ import logging
 
 
 def extract_aadhaar(text: str):
-    """
-    Extract Aadhaar fields from OCR text
-    """
 
     aadhaar_number = None
     name = None
@@ -15,71 +12,28 @@ def extract_aadhaar(text: str):
 
     try:
 
-        text = text.replace("\r", "\n")
         lines = [line.strip() for line in text.split("\n") if line.strip()]
 
-        # -----------------------------
-        # Aadhaar Number Extraction
-        # -----------------------------
+        # Aadhaar number
+        match = re.search(r"\d{4}\s?\d{4}\s?\d{4}", text)
 
-        aadhaar_patterns = [
-            r"\b\d{4}\s\d{4}\s\d{4}\b",
-            r"\b\d{12}\b",
-            r"\b\d{4}-\d{4}-\d{4}\b",
-            r"\bXXXX\sXXXX\s\d{4}\b"
-        ]
+        if match:
+            aadhaar_number = match.group()
 
-        for pattern in aadhaar_patterns:
-            match = re.search(pattern, text)
+        # DOB
+        match = re.search(r"\d{2}/\d{2}/\d{4}", text)
 
-            if match:
-                aadhaar_number = match.group()
-                aadhaar_number = aadhaar_number.replace("-", " ")
-                break
+        if match:
+            dob = match.group()
 
-        # -----------------------------
-        # DOB Extraction
-        # -----------------------------
+        # Gender
+        if "male" in text.lower():
+            gender = "Male"
 
-        dob_patterns = [
-            r"\b\d{2}/\d{2}/\d{4}\b",
-            r"\b\d{2}-\d{2}-\d{4}\b",
-            r"DOB[:\s]*\d{2}/\d{2}/\d{4}",
-            r"Year of Birth[:\s]*\d{4}"
-        ]
+        if "female" in text.lower():
+            gender = "Female"
 
-        for pattern in dob_patterns:
-
-            match = re.search(pattern, text, re.IGNORECASE)
-
-            if match:
-                dob = match.group()
-
-                dob = re.sub(
-                    r"(DOB|Year of Birth|:)",
-                    "",
-                    dob,
-                    flags=re.IGNORECASE
-                ).strip()
-
-                break
-
-        # -----------------------------
-        # Gender Extraction
-        # -----------------------------
-
-        gender_match = re.search(
-            r"\b(MALE|FEMALE|Male|Female)\b",
-            text
-        )
-
-        if gender_match:
-            gender = gender_match.group().capitalize()
-
-        # -----------------------------
-        # Name Detection
-        # -----------------------------
-
+        # Name detection
         for i, line in enumerate(lines):
 
             if "government of india" in line.lower():
@@ -88,55 +42,37 @@ def extract_aadhaar(text: str):
 
                     candidate = lines[i + 1]
 
-                    if (
-                        not re.search(r"\d", candidate)
-                        and len(candidate.split()) >= 2
-                        and len(candidate) < 40
-                    ):
+                    if not re.search(r"\d", candidate):
+
                         name = candidate
 
                 break
 
-        # fallback name detection
-        if not name:
-
-            for line in lines:
-
-                if (
-                    len(line.split()) >= 2
-                    and not re.search(r"\d", line)
-                    and len(line) < 40
-                ):
-                    name = line
-                    break
-
-        # -----------------------------
-        # Address Extraction
-        # -----------------------------
-
+        # Address detection
         address_lines = []
-        start_collecting = False
+
+        start = False
 
         for line in lines:
 
             if "address" in line.lower():
-                start_collecting = True
+                start = True
                 continue
 
-            if start_collecting:
-
-                if re.search(aadhaar_patterns[0], line):
-                    break
+            if start:
 
                 address_lines.append(line)
 
         if address_lines:
+
             address = " ".join(address_lines)
 
     except Exception as e:
+
         logging.warning(f"Aadhaar extraction failed: {str(e)}")
 
     return {
+
         "aadhaar_number": aadhaar_number,
         "name": name,
         "dob": dob,
