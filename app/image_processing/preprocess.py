@@ -4,29 +4,23 @@ import cv2
 def preprocess(image):
     """
     Preprocess image for better OCR accuracy
+
     Steps:
     1. Convert to grayscale
-    2. Apply Gaussian blur
-    3. Adaptive threshold
+    2. Increase contrast
+    3. Light denoise
     """
 
     if image is None:
         raise ValueError("Invalid image input")
 
-    # 1️⃣ Convert to grayscale
+    # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 2️⃣ Remove noise
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    # Increase contrast
+    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
 
-    # 3️⃣ Improve contrast using adaptive threshold
-    thresh = cv2.adaptiveThreshold(
-        blur,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        11,
-        2
-    )
+    # Bilateral filter (keeps text edges sharp)
+    gray = cv2.bilateralFilter(gray, 9, 75, 75)
 
-    return thresh
+    return gray
