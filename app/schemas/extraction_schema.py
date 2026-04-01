@@ -3,18 +3,35 @@ from typing import Optional, List, Dict, Any
 
 
 class AadhaarFields(BaseModel):
+
     aadhaar_number: Optional[str] = Field(
         default=None,
         description="12 digit Aadhaar number"
     )
 
+    name: Optional[str] = Field(
+        default=None,
+        description="Name on Aadhaar card"
+    )
+
     dob: Optional[str] = Field(
         default=None,
-        description="Date of birth extracted from Aadhaar"
+        description="Date of birth on Aadhaar (dd/mm/yyyy)"
+    )
+
+    gender: Optional[str] = Field(
+        default=None,
+        description="Gender on Aadhaar (Male/Female)"
+    )
+
+    address: Optional[str] = Field(
+        default=None,
+        description="Address on Aadhaar card"
     )
 
 
 class PanFields(BaseModel):
+
     name: Optional[str] = Field(
         default=None,
         description="Name on PAN card"
@@ -37,6 +54,7 @@ class PanFields(BaseModel):
 
 
 class PassportFields(BaseModel):
+
     passport_number: Optional[str] = Field(
         default=None,
         description="Passport number"
@@ -59,6 +77,7 @@ class PassportFields(BaseModel):
 
 
 class DLFields(BaseModel):
+
     dl_number: Optional[str] = Field(
         default=None,
         description="Driving License number"
@@ -81,6 +100,7 @@ class DLFields(BaseModel):
 
 
 class VoterIDFields(BaseModel):
+
     voter_id: Optional[str] = Field(
         default=None,
         description="Voter ID number"
@@ -103,6 +123,7 @@ class VoterIDFields(BaseModel):
 
 
 class ExtractionResult(BaseModel):
+
     status: str = Field(
         description="Processing status (success / failed / error)"
     )
