@@ -3,7 +3,6 @@ import asyncio
 import logging
 
 from app.ocr.tesseract_ocr import TesseractOCR
-from app.ocr.paddle_ocr import PaddleHandwrittenOCR
 from app.image_processing.preprocess import preprocess
 from app.extraction.aadhaar_extractor import extract_aadhaar
 from app.extraction.pan_extractor import extract_pan
@@ -23,25 +22,21 @@ logging.basicConfig(
 )
 
 tesseract_engine = TesseractOCR()
-paddle_engine = PaddleHandwrittenOCR(lang="en|hi")
 
 
 async def async_qr_ocr(image):
     """
     Run QR extraction and OCR in parallel.
-    Returns: qr_data, merged_text
+    Returns: qr_data, extracted_text
     """
     loop = asyncio.get_event_loop()
 
     qr_future = loop.run_in_executor(None, extract_aadhaar_qr, image)
     tesseract_future = loop.run_in_executor(None, tesseract_engine.extract_text, preprocess(image))
-    paddle_future = loop.run_in_executor(None, paddle_engine.extract_text, preprocess(image))
 
-    qr_data, tesseract_text, paddle_text = await asyncio.gather(qr_future, tesseract_future, paddle_future)
+    qr_data, text = await asyncio.gather(qr_future, tesseract_future)
 
-    # Weighted merge: prefer PaddleOCR for handwriting
-    merged_text = tesseract_text + "\n" + paddle_text
-    return qr_data, merged_text
+    return qr_data, text
 
 
 def detect_document_type(text, image, qr_data=None):
@@ -50,14 +45,14 @@ def detect_document_type(text, image, qr_data=None):
     """
     text_lower = text.lower()
 
-    # 1. QR-based detection
+    # QR-based detection
     if qr_data:
         if isinstance(qr_data, list):
             for qr in qr_data:
                 if "uid" in qr or "aadhaar" in qr:
                     return "Aadhaar"
 
-    # 2. Keyword-based detection
+    # Keyword-based detection
     keywords = {
         "PAN": ["income tax department", "permanent account number"],
         "Aadhaar": ["unique identification authority of india", "aadhaar"],
@@ -69,7 +64,7 @@ def detect_document_type(text, image, qr_data=None):
         if any(kw.lower() in text_lower for kw in kws):
             return doc_type
 
-    # 3. Regex-based detection
+    # Regex-based detection
     import re
     patterns = {
         "PAN": r"[A-Z]{5}[0-9]{4}[A-Z]",
@@ -82,7 +77,7 @@ def detect_document_type(text, image, qr_data=None):
         if re.search(pattern, text):
             return doc_type
 
-    # 4. Image heuristics (aspect ratio)
+    # Image heuristics (aspect ratio)
     height, width = image.shape[:2]
     aspect_ratio = width / height
     if aspect_ratio > 1.5:
@@ -98,7 +93,7 @@ def detect_document_type(text, image, qr_data=None):
 def process_document(image_path, max_dim=1200) -> ExtractionResult:
     """
     Complete document pipeline: blur check, rotation, cropping,
-    resizing, OCR (Tesseract + PaddleOCR), QR extraction, field parsing.
+    resizing, OCR (Tesseract only), QR extraction, field parsing.
     """
     logging.info(f"Processing document: {image_path}")
     image = cv2.imread(image_path)
