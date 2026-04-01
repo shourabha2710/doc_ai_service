@@ -1,35 +1,77 @@
 import re
+import logging
+
 
 def extract_voterid(text):
     """
-    Extract Voter ID fields from OCR text
+    Extract Voter ID (EPIC) fields from OCR text
     """
 
     lines = [line.strip() for line in text.split("\n") if line.strip()]
 
     voter_id = None
     name = None
-    dob = None
     father_name = None
+    dob = None
 
-    # Voter ID pattern (e.g., 3 letters + 7 digits)
-    voter_match = re.search(r"[A-Z]{3}[0-9]{7}", text)
-    if voter_match:
-        voter_id = voter_match.group()
+    try:
 
-    # DOB pattern
-    dob_match = re.search(r"\d{2}/\d{2}/\d{4}", text)
-    if dob_match:
-        dob = dob_match.group()
+        # ---------- VOTER ID / EPIC ----------
+        voter_patterns = [
+            r"\b[A-Z]{3}[0-9]{7}\b",     # ABC1234567
+            r"\b[A-Z]{2,3}[0-9]{6,8}\b"  # OCR variations
+        ]
 
-    # Name / Father Name heuristics
-    for i, line in enumerate(lines):
-        if "elector" in line.lower() or "voter" in line.lower():
-            if i + 1 < len(lines):
-                name = lines[i + 1]
-            if i + 2 < len(lines):
-                father_name = lines[i + 2]
-            break
+        for pattern in voter_patterns:
+            match = re.search(pattern, text)
+            if match:
+                voter_id = match.group()
+                break
+
+        # ---------- DOB ----------
+        dob_patterns = [
+            r"\b\d{2}/\d{2}/\d{4}\b",
+            r"\b\d{2}-\d{2}-\d{4}\b"
+        ]
+
+        for pattern in dob_patterns:
+            match = re.search(pattern, text)
+            if match:
+                dob = match.group()
+                break
+
+        # ---------- NAME / FATHER NAME ----------
+        for i, line in enumerate(lines):
+
+            lower_line = line.lower()
+
+            # Detect name
+            if "name" in lower_line and not name:
+                parts = line.split(":")
+                if len(parts) > 1:
+                    name = parts[1].strip()
+
+            # Detect father name
+            if any(k in lower_line for k in ["father", "s/o", "d/o", "w/o"]):
+                parts = line.split(":")
+                if len(parts) > 1:
+                    father_name = parts[1].strip()
+
+        # ---------- FALLBACK NAME DETECTION ----------
+        if not name:
+
+            for line in lines:
+
+                if (
+                    len(line.split()) >= 2
+                    and not re.search(r"\d", line)
+                    and len(line) < 40
+                ):
+                    name = line
+                    break
+
+    except Exception as e:
+        logging.warning(f"Voter ID extraction failed: {str(e)}")
 
     return {
         "voter_id": voter_id,
