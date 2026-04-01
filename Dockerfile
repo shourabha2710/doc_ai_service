@@ -1,22 +1,24 @@
 FROM python:3.11-slim
 
-# install tesseract
+# Install Tesseract and ZBar
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libtesseract-dev \
+    zbar-tools \
+    libzbar0 \
     && rm -rf /var/lib/apt/lists/*
 
-# set working directory
+# Set working directory
 WORKDIR /app
 
-# copy files
+# Copy project files
 COPY . /app
 
-# install python deps
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# expose port
+# Expose port
 EXPOSE 10000
 
-# start server
+# Start server
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
