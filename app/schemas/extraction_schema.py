@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 
 class AadhaarFields(BaseModel):
     aadhaar_number: Optional[str] = None
@@ -34,7 +34,7 @@ class ExtractionResult(BaseModel):
     blur_score: Optional[float] = None
     rotation_angle: Optional[int] = None
     document_cropped: Optional[bool] = None
-    qr_data: Optional[Dict[str, Any]] = None
+    qr_data: Optional[List[Dict[str, Any]]] = None
     raw_text: Optional[str] = None
     aadhaar_fields: Optional[AadhaarFields] = None
     pan_fields: Optional[PanFields] = None
@@ -42,4 +42,4 @@ class ExtractionResult(BaseModel):
     dl_fields: Optional[DLFields] = None
     voterid_fields: Optional[VoterIDFields] = None
     document_type: Optional[str] = None
-    reason: Optional[str] = None  # for failure cases
+    reason: Optional[str] = None
