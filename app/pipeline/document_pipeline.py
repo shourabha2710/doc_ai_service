@@ -6,6 +6,7 @@ from app.extraction.aadhaar_extractor import extract_aadhaar
 from app.image_processing.blur_detection import detect_blur
 from app.image_processing.auto_rotate import auto_rotate_image
 from app.image_processing.document_edge import detect_document_edges
+from app.extraction.pan_extractor import extract_pan
 
 
 ocr_engine = TesseractOCR()
@@ -45,7 +46,8 @@ def process_document(image_path):
     text = ocr_engine.extract_text(processed_image)
 
     # 7️⃣ Extract fields
-    fields = extract_aadhaar(text)
+    aadhaar_fields = extract_aadhaar(text)
+    pan_fields = extract_pan(text)
 
     return {
         "status": "success",
@@ -53,5 +55,6 @@ def process_document(image_path):
         "rotation_angle": rotation_angle,
         "document_cropped": cropped,
         "raw_text": text,
-        "fields": fields
+        "aadhaar_fields": aadhaar_fields,
+        "pan_fields": pan_fields
     }
