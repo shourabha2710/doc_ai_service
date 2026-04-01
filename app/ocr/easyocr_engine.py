@@ -8,7 +8,7 @@ class EasyOCREngine(OCREngine):
 
         # load once
         self.reader = easyocr.Reader(
-            ['en'],
+            ['en','hi'],
             gpu=False
         )
 

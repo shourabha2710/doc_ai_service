@@ -1,19 +1,26 @@
 import cv2
+import numpy as np
 
 
 def preprocess(image):
 
+    # convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    # increase contrast
+    gray = cv2.equalizeHist(gray)
 
+    # denoise
+    gray = cv2.bilateralFilter(gray, 9, 75, 75)
+
+    # adaptive threshold
     thresh = cv2.adaptiveThreshold(
         gray,
         255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
         cv2.THRESH_BINARY,
-        11,
-        2
+        15,
+        10
     )
 
     return thresh

@@ -40,13 +40,13 @@ async def async_qr_ocr(image):
 
     loop = asyncio.get_running_loop()
 
-    processed = preprocess(image)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     qr_future = loop.run_in_executor(None, extract_aadhaar_qr, image)
 
-    easy_future = loop.run_in_executor(None, easyocr_engine.extract_text, processed)
+    easy_future = loop.run_in_executor(None, easyocr_engine.extract_text, gray)
 
-    tess_future = loop.run_in_executor(None, tesseract_engine.extract_text, processed)
+    tess_future = loop.run_in_executor(None, tesseract_engine.extract_text, gray)
 
     qr_data, easy_text, tess_text = await asyncio.gather(
         qr_future,
@@ -54,8 +54,14 @@ async def async_qr_ocr(image):
         tess_future
     )
 
-    # combine both OCR outputs
-    text = easy_text + "\n" + tess_text
+    # choose better OCR result
+    if len(easy_text) > len(tess_text):
+        text = easy_text
+    else:
+        text = tess_text
+
+    logging.info(f"EasyOCR text: {easy_text}")
+    logging.info(f"Tesseract text: {tess_text}")
 
     return qr_data, text
 
@@ -67,7 +73,7 @@ def detect_document_type(text):
     if "income tax department" in text:
         return "PAN"
 
-    if "aadhaar" in text or "unique identification authority":
+    if re.search(r"\d{4}\s?\d{4}\s?\d{4}", text):
         return "Aadhaar"
 
     if "passport" in text:
@@ -109,17 +115,40 @@ async def process_document_async(image_path: str) -> ExtractionResult:
 
     image, cropped = detect_document_edges(image)
 
+    image = cv2.resize(
+    image,
+    None,
+    fx=2,
+    fy=2,
+    interpolation=cv2.INTER_CUBIC
+)
+
     qr_data, text = await async_qr_ocr(image)
 
     logging.info(text)
 
     document_type = detect_document_type(text)
 
-    aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
-    pan_fields = PanFields(**extract_pan(text))
-    passport_fields = PassportFields(**extract_passport(text))
-    dl_fields = DLFields(**extract_dl(text))
-    voterid_fields = VoterIDFields(**extract_voterid(text))
+    aadhaar_fields = None
+    pan_fields = None
+    passport_fields = None
+    dl_fields = None
+    voterid_fields = None
+    
+    if document_type == "Aadhaar":
+        aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
+    
+    elif document_type == "PAN":
+        pan_fields = PanFields(**extract_pan(text))
+    
+    elif document_type == "Passport":
+        passport_fields = PassportFields(**extract_passport(text))
+    
+    elif document_type == "Driving License":
+        dl_fields = DLFields(**extract_dl(text))
+    
+    elif document_type == "Voter ID":
+        voterid_fields = VoterIDFields(**extract_voterid(text))
 
     return ExtractionResult(
 

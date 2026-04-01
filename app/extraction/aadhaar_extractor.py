@@ -12,60 +12,100 @@ def extract_aadhaar(text: str):
 
     try:
 
-        lines = [line.strip() for line in text.split("\n") if line.strip()]
-
+        # -------------------------
         # Aadhaar number
-        match = re.search(r"\d{4}\s?\d{4}\s?\d{4}", text)
+        # -------------------------
+
+        match = re.search(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text)
 
         if match:
             aadhaar_number = match.group()
 
+        # -------------------------
         # DOB
-        match = re.search(r"\d{2}/\d{2}/\d{4}", text)
+        # -------------------------
 
-        if match:
-            dob = match.group()
+        dob_patterns = [
+            r"\d{2}/\d{2}/\d{4}",
+            r"\d{2}-\d{2}-\d{4}",
+            r"Year of Birth[: ]*\d{4}",
+            r"YOB[: ]*\d{4}"
+        ]
 
-        # Gender
-        if "male" in text.lower():
-            gender = "Male"
+        for pattern in dob_patterns:
 
-        if "female" in text.lower():
-            gender = "Female"
+            match = re.search(pattern, text, re.IGNORECASE)
 
-        # Name detection
-        for i, line in enumerate(lines):
+            if match:
+                dob = match.group()
 
-            if "government of india" in line.lower():
-
-                if i + 1 < len(lines):
-
-                    candidate = lines[i + 1]
-
-                    if not re.search(r"\d", candidate):
-
-                        name = candidate
+                dob = (
+                    dob.replace("Year of Birth", "")
+                    .replace("YOB", "")
+                    .replace(":", "")
+                    .strip()
+                )
 
                 break
 
-        # Address detection
-        address_lines = []
+        # -------------------------
+        # Gender
+        # -------------------------
 
-        start = False
+        if re.search(r"\bmale\b", text, re.IGNORECASE):
+            gender = "Male"
 
-        for line in lines:
+        if re.search(r"\bfemale\b", text, re.IGNORECASE):
+            gender = "Female"
 
-            if "address" in line.lower():
-                start = True
+        # -------------------------
+        # NAME DETECTION
+        # -------------------------
+        
+        # remove numbers
+        clean_text = re.sub(r"\d", "", text)
+        
+        # split words
+        words = clean_text.split()
+        
+        english_candidates = []
+        hindi_candidates = []
+        
+        for i in range(len(words) - 1):
+        
+            candidate = words[i] + " " + words[i + 1]
+        
+            if any(k in candidate.lower() for k in [
+                "male",
+                "female",
+                "birth",
+                "aadhaar",
+                "vid",
+                "authority"
+            ]):
                 continue
+        
+            # detect english name
+            if re.match(r"^[A-Za-z ]+$", candidate):
+                english_candidates.append(candidate)
+        
+            else:
+                hindi_candidates.append(candidate)
+        
+        # priority: english name
+        if english_candidates:
+            name = english_candidates[0]
+        
+        elif hindi_candidates:
+            name = hindi_candidates[0]
+        # -------------------------
+        # ADDRESS DETECTION
+        # -------------------------
 
-            if start:
+        addr_match = re.search(r"address[: ]*(.*)", text, re.IGNORECASE)
 
-                address_lines.append(line)
-
-        if address_lines:
-
-            address = " ".join(address_lines)
+        if addr_match:
+            address = addr_match.group(1)
 
     except Exception as e:
 
