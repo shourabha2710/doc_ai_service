@@ -1,7 +1,6 @@
 import re
 import logging
 
-
 def extract_aadhaar(text: str):
 
     aadhaar_number = None
@@ -61,20 +60,17 @@ def extract_aadhaar(text: str):
         # -------------------------
         # NAME DETECTION
         # -------------------------
-        
-        # remove numbers
+
         clean_text = re.sub(r"\d", "", text)
-        
-        # split words
+
         words = clean_text.split()
-        
+
         english_candidates = []
-        hindi_candidates = []
-        
+
         for i in range(len(words) - 1):
-        
+
             candidate = words[i] + " " + words[i + 1]
-        
+
             if any(k in candidate.lower() for k in [
                 "male",
                 "female",
@@ -84,28 +80,55 @@ def extract_aadhaar(text: str):
                 "authority"
             ]):
                 continue
-        
-            # detect english name
+
             if re.match(r"^[A-Za-z ]+$", candidate):
                 english_candidates.append(candidate)
-        
-            else:
-                hindi_candidates.append(candidate)
-        
-        # priority: english name
+
         if english_candidates:
             name = english_candidates[0]
-        
-        elif hindi_candidates:
-            name = hindi_candidates[0]
+
         # -------------------------
         # ADDRESS DETECTION
         # -------------------------
 
-        addr_match = re.search(r"address[: ]*(.*)", text, re.IGNORECASE)
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
 
-        if addr_match:
-            address = addr_match.group(1)
+        for i, line in enumerate(lines):
+
+            if "address" in line.lower():
+
+                address_lines = []
+
+                for j in range(i + 1, min(i + 6, len(lines))):
+
+                    candidate = lines[j]
+
+                    # stop if aadhaar number appears
+                    if re.search(r"\d{4}\s?\d{4}\s?\d{4}", candidate):
+                        break
+
+                    address_lines.append(candidate)
+
+                if address_lines:
+                    address = " ".join(address_lines)
+                    break
+
+        # -------------------------
+        # CLEAN ADDRESS
+        # -------------------------
+
+        if address:
+
+            # remove unwanted words
+            address = re.sub(
+                r"(government of india|unique identification authority of india|aadhaar)",
+                "",
+                address,
+                flags=re.IGNORECASE
+            )
+
+            # remove extra spaces
+            address = re.sub(r"\s+", " ", address).strip()
 
     except Exception as e:
 

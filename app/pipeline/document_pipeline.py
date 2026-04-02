@@ -96,73 +96,99 @@ def detect_document_type(text):
     return "Unknown"
 
 
-async def process_document_async(image_path: str) -> ExtractionResult:
+async def process_document_async(
+    document_type: str,
+    front_path: str,
+    back_path: str | None = None
+) -> ExtractionResult:
 
-    logging.info(f"Processing document {image_path}")
+    logging.info(f"Processing document type: {document_type}")
 
-    image = cv2.imread(image_path)
+    front_image = cv2.imread(front_path)
 
-    if image is None:
+    if front_image is None:
 
         return ExtractionResult(
             status="error",
-            reason="Invalid image"
+            reason="Invalid front image"
         )
 
-    blur_result = detect_blur(image)
+    blur_result = detect_blur(front_image)
 
     if blur_result["is_blurry"]:
 
         return ExtractionResult(
             status="failed",
             blur_score=blur_result["blur_score"],
-            reason="Image too blurry"
+            reason="Front image too blurry"
         )
 
-    image, rotation_angle = auto_rotate_image(image)
+    front_image, rotation_angle = auto_rotate_image(front_image)
 
-    image, cropped = detect_document_edges(image)
+    front_image, cropped = detect_document_edges(front_image)
 
-    image = cv2.resize(
-    image,
-    None,
-    fx=2,
-    fy=2,
-    interpolation=cv2.INTER_CUBIC
-)
-    kernel = np.array([
-    [-1,-1,-1],
-    [-1, 9,-1],
-    [-1,-1,-1]
-])
+    front_image = cv2.resize(
+        front_image,
+        None,
+        fx=2,
+        fy=2,
+        interpolation=cv2.INTER_CUBIC
+    )
 
-    image = cv2.filter2D(image, -1, kernel)
+    qr_data, front_text = await async_qr_ocr(front_image)
 
-    qr_data, text = await async_qr_ocr(image)
+    back_text = ""
+
+    # ---------- BACK IMAGE OCR ----------
+    if back_path:
+
+        back_image = cv2.imread(back_path)
+
+        if back_image is not None:
+
+            back_image, _ = auto_rotate_image(back_image)
+
+            back_image = cv2.resize(
+                back_image,
+                None,
+                fx=2,
+                fy=2,
+                interpolation=cv2.INTER_CUBIC
+            )
+
+            _, back_text = await async_qr_ocr(back_image)
+
+    # merge both texts
+    text = front_text + "\n" + back_text
 
     logging.info(text)
-
-    document_type = detect_document_type(text)
 
     aadhaar_fields = None
     pan_fields = None
     passport_fields = None
     dl_fields = None
     voterid_fields = None
-    
-    if document_type == "Aadhaar":
+
+    document_type = document_type.lower()
+
+    if document_type == "aadhaar":
+
         aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
-    
-    elif document_type == "PAN":
+
+    elif document_type == "pan":
+
         pan_fields = PanFields(**extract_pan(text))
-    
-    elif document_type == "Passport":
+
+    elif document_type == "passport":
+
         passport_fields = PassportFields(**extract_passport(text))
-    
-    elif document_type == "Driving License":
+
+    elif document_type == "dl":
+
         dl_fields = DLFields(**extract_dl(text))
-    
-    elif document_type == "Voter ID":
+
+    elif document_type == "voter":
+
         voterid_fields = VoterIDFields(**extract_voterid(text))
 
     return ExtractionResult(
