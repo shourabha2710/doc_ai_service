@@ -65,7 +65,7 @@ async def async_qr_ocr(image):
         layout_text
     ]
 
-    text = max(candidates, key=len)
+    text = layout_text + "\n" + easy_text + "\n" + tess_text
 
     logging.info(f"EasyOCR text: {easy_text}")
     logging.info(f"Tesseract text: {tess_text}")

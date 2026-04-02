@@ -2,82 +2,107 @@ import re
 import logging
 
 
-def clean_ocr_text(text: str) -> str:
-    """
-    Fix common OCR mistakes in PAN numbers
-    """
-    replacements = {
-        "O": "0",
-        "I": "1",
-        "S": "5",
-        "B": "8"
-    }
+def clean_line(line: str):
 
-    for wrong, correct in replacements.items():
-        text = text.replace(wrong, correct)
+    line = line.replace("|", "")
+    line = line.replace(":", "")
+    line = line.replace(";", "")
 
-    return text
+    return line.strip()
+
+
+def is_valid_name(line: str):
+
+    if re.search(r"\d", line):
+        return False
+
+    blacklist = [
+        "INCOME",
+        "TAX",
+        "DEPARTMENT",
+        "GOVT",
+        "INDIA",
+        "ACCOUNT",
+        "NUMBER",
+        "SIGNATURE"
+    ]
+
+    for b in blacklist:
+        if b in line.upper():
+            return False
+
+    if len(line.split()) < 2:
+        return False
+
+    return True
 
 
 def extract_pan(text: str):
-    """
-    Extract PAN card fields from OCR text
-    """
 
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-
-    pan_number = None
     name = None
     father_name = None
     dob = None
+    pan_number = None
 
     try:
 
-        # PAN regex (ABCDE1234F)
-        pan_pattern = r"\b[A-Z]{5}[0-9]{4}[A-Z]\b"
+        lines = [clean_line(l) for l in text.split("\n") if l.strip()]
 
-        # DOB patterns
-        dob_patterns = [
-            r"\b\d{2}/\d{2}/\d{4}\b",
-            r"\b\d{2}-\d{2}-\d{4}\b"
-        ]
+        # -------------------------
+        # PAN NUMBER
+        # -------------------------
+
+        pan_match = re.search(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b", text)
+
+        if pan_match:
+            pan_number = pan_match.group()
+
+        # -------------------------
+        # DOB
+        # -------------------------
+
+        dob_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
+
+        if dob_match:
+            dob = dob_match.group()
+
+        # -------------------------
+        # FIND DOB LINE INDEX
+        # -------------------------
+
+        dob_index = None
 
         for i, line in enumerate(lines):
 
-            clean_line = clean_ocr_text(line.upper())
+            if dob and dob in line:
+                dob_index = i
+                break
 
-            # PAN detection
-            pan_match = re.search(pan_pattern, clean_line)
-            if pan_match and not pan_number:
-                pan_number = pan_match.group()
+        # -------------------------
+        # NAME + FATHER NAME
+        # -------------------------
 
-            # DOB detection
-            for pattern in dob_patterns:
-                dob_match = re.search(pattern, line)
-                if dob_match:
-                    dob = dob_match.group()
-                    break
+        if dob_index is not None:
 
-            # Name detection heuristic
-            if "INCOME TAX DEPARTMENT" in line.upper():
+            candidates = []
 
-                if i + 1 < len(lines):
-                    name = lines[i + 1]
+            for j in range(max(0, dob_index - 3), dob_index):
 
-                if i + 2 < len(lines):
-                    father_name = lines[i + 2]
+                if is_valid_name(lines[j]):
+                    candidates.append(lines[j])
 
-        # Fallback name detection
-        if not name:
-            for line in lines:
-                if line.isalpha() and len(line.split()) >= 2:
-                    name = line
-                    break
+            if len(candidates) >= 1:
+                name = candidates[-2] if len(candidates) >= 2 else candidates[0]
+
+            if len(candidates) >= 2:
+                father_name = candidates[-1]
 
     except Exception as e:
+
         logging.warning(f"PAN extraction failed: {str(e)}")
 
     return {
+
         "name": name,
         "father_name": father_name,
         "dob": dob,
