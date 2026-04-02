@@ -2,6 +2,7 @@ import cv2
 import asyncio
 import logging
 import re
+import numpy as np
 
 from app.ocr.tesseract_ocr import TesseractOCR
 from app.ocr.easyocr_engine import EasyOCREngine
@@ -17,6 +18,7 @@ from app.extraction.voterid_extractor import extract_voterid
 from app.image_processing.blur_detection import detect_blur
 from app.image_processing.auto_rotate import auto_rotate_image
 from app.image_processing.document_edge import detect_document_edges
+from app.ocr.layout_ocr import layout_aware_ocr
 
 from app.schemas.extraction_schema import (
     ExtractionResult,
@@ -48,20 +50,26 @@ async def async_qr_ocr(image):
 
     tess_future = loop.run_in_executor(None, tesseract_engine.extract_text, gray)
 
-    qr_data, easy_text, tess_text = await asyncio.gather(
+    layout_future = loop.run_in_executor(None, layout_aware_ocr, gray)
+
+    qr_data, easy_text, tess_text, layout_text = await asyncio.gather(
         qr_future,
         easy_future,
-        tess_future
+        tess_future,
+        layout_future
     )
 
-    # choose better OCR result
-    if len(easy_text) > len(tess_text):
-        text = easy_text
-    else:
-        text = tess_text
+    candidates = [
+        easy_text,
+        tess_text,
+        layout_text
+    ]
+
+    text = max(candidates, key=len)
 
     logging.info(f"EasyOCR text: {easy_text}")
     logging.info(f"Tesseract text: {tess_text}")
+    logging.info(f"Layout OCR text: {layout_text}")
 
     return qr_data, text
 
@@ -122,6 +130,13 @@ async def process_document_async(image_path: str) -> ExtractionResult:
     fy=2,
     interpolation=cv2.INTER_CUBIC
 )
+    kernel = np.array([
+    [-1,-1,-1],
+    [-1, 9,-1],
+    [-1,-1,-1]
+])
+
+    image = cv2.filter2D(image, -1, kernel)
 
     qr_data, text = await async_qr_ocr(image)
 
