@@ -3,8 +3,8 @@ uvicorn[standard]
 python-multipart
 opencv-python-headless
 pillow
-numpy
+numpy==1.23.5
 pyzbar
 scikit-image
 paddleocr==2.7.0.3
-paddlepaddle==2.6.1
+paddlepaddle==2.6.2
