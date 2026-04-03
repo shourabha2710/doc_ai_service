@@ -36,25 +36,38 @@ logging.basicConfig(
 tesseract_engine = TesseractOCR()
 
 
-async def async_qr_ocr(image):
+# -----------------------------
+# PARALLEL OCR
+# -----------------------------
+async def async_ocr(image):
 
     loop = asyncio.get_running_loop()
 
-    qr_future = loop.run_in_executor(None, extract_aadhaar_qr, image)
-    tess_future = loop.run_in_executor(None, tesseract_engine.extract_text, image)
-    layout_future = loop.run_in_executor(None, layout_aware_ocr, image)
+    tess_future = loop.run_in_executor(
+        None,
+        tesseract_engine.extract_text,
+        image
+    )
 
-    qr_data, tess_text, layout_text = await asyncio.gather(
-        qr_future,
+    layout_future = loop.run_in_executor(
+        None,
+        layout_aware_ocr,
+        image
+    )
+
+    tess_text, layout_text = await asyncio.gather(
         tess_future,
         layout_future
     )
 
     text = tess_text + "\n" + layout_text
 
-    return qr_data, text
+    return text
 
 
+# -----------------------------
+# MAIN DOCUMENT PIPELINE
+# -----------------------------
 async def process_document_async(
     document_type: str,
     front_path: str,
@@ -72,6 +85,9 @@ async def process_document_async(
             reason="Invalid front image"
         )
 
+    # -----------------------------
+    # BLUR CHECK
+    # -----------------------------
     blur_result = detect_blur(front_image)
 
     if blur_result["is_blurry"]:
@@ -82,16 +98,33 @@ async def process_document_async(
             reason="Front image too blurry"
         )
 
+    # -----------------------------
+    # QR DETECTION (ORIGINAL IMAGE)
+    # -----------------------------
+    qr_data = extract_aadhaar_qr(front_image)
+
+    logging.info(f"QR detected: {qr_data}")
+
+    # -----------------------------
+    # AUTO ROTATE
+    # -----------------------------
     front_image, rotation_angle = auto_rotate_image(front_image)
 
+    # -----------------------------
+    # DOCUMENT EDGE DETECTION
+    # -----------------------------
     front_image, cropped = detect_document_edges(front_image)
 
+    # -----------------------------
+    # IMAGE RESIZE
+    # -----------------------------
     h, w = front_image.shape[:2]
 
     max_dim = 1500
     scale = max_dim / max(h, w)
 
     if scale < 1:
+
         front_image = cv2.resize(
             front_image,
             None,
@@ -100,14 +133,22 @@ async def process_document_async(
             interpolation=cv2.INTER_AREA
         )
 
-    qr_data, front_text = await async_qr_ocr(front_image)
+    # -----------------------------
+    # OCR FRONT
+    # -----------------------------
+    front_text = await async_ocr(front_image)
 
-    # Clean OCR text
-    front_text = re.sub(r"[^\x00-\x7F\n]+", " ", front_text)
+    # -----------------------------
+    # CLEAN TEXT
+    # (IMPORTANT: Hindi remove nahi karna)
+    # -----------------------------
     front_text = re.sub(r"[ \t]+", " ", front_text)
 
     back_text = ""
 
+    # -----------------------------
+    # BACK IMAGE OCR
+    # -----------------------------
     if back_path:
 
         back_image = cv2.imread(back_path)
@@ -124,7 +165,7 @@ async def process_document_async(
                 interpolation=cv2.INTER_CUBIC
             )
 
-            _, back_text = await async_qr_ocr(back_image)
+            back_text = await async_ocr(back_image)
 
     text = front_text + "\n" + back_text
 
@@ -138,10 +179,9 @@ async def process_document_async(
 
     document_type = document_type.lower()
 
-    # -------------------------
+    # -----------------------------
     # AADHAAR (QR PRIORITY)
-    # -------------------------
-
+    # -----------------------------
     if document_type == "aadhaar":
 
         if qr_data:
@@ -162,23 +202,45 @@ async def process_document_async(
 
             logging.info("Using OCR Aadhaar extraction")
 
-            aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
+            aadhaar_fields = AadhaarFields(
+                **extract_aadhaar(text)
+            )
 
+    # -----------------------------
+    # PAN
+    # -----------------------------
     elif document_type == "pan":
 
-        pan_fields = PanFields(**extract_pan(text))
+        pan_fields = PanFields(
+            **extract_pan(text)
+        )
 
+    # -----------------------------
+    # PASSPORT
+    # -----------------------------
     elif document_type == "passport":
 
-        passport_fields = PassportFields(**extract_passport(text))
+        passport_fields = PassportFields(
+            **extract_passport(text)
+        )
 
+    # -----------------------------
+    # DRIVING LICENSE
+    # -----------------------------
     elif document_type == "dl":
 
-        dl_fields = DLFields(**extract_dl(text))
+        dl_fields = DLFields(
+            **extract_dl(text)
+        )
 
+    # -----------------------------
+    # VOTER ID
+    # -----------------------------
     elif document_type == "voter":
 
-        voterid_fields = VoterIDFields(**extract_voterid(text))
+        voterid_fields = VoterIDFields(
+            **extract_voterid(text)
+        )
 
     return ExtractionResult(
 
