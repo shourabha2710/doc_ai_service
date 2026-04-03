@@ -4,6 +4,8 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+ENV OMP_NUM_THREADS=1
+ENV KMP_DUPLICATE_LIB_OK=TRUE
 
 # ---------------- SYSTEM DEPENDENCIES ----------------
 RUN apt-get update && apt-get install -y \
@@ -15,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libzbar0 \
     zbar-tools \
     && rm -rf /var/lib/apt/lists/*
@@ -30,8 +32,7 @@ COPY requirements.txt .
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# ---------------- PRELOAD MODEL ----------------
-RUN python -c "from paddleocr import PaddleOCR; PaddleOCR(use_angle_cls=True, lang='en')"
+# ❌ REMOVE PRELOAD STEP (IMPORTANT)
 
 # ---------------- COPY PROJECT ----------------
 COPY . .
