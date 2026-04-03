@@ -105,10 +105,9 @@ async def process_document_async(
     # ---------------- OCR FRONT ----------------
     front_text = await async_ocr(front_image)
 
-    if not front_text or len(front_text.strip()) < 10:
-        logging.info("Retry OCR with stronger resize...")
-        temp = cv2.resize(front_image, None, fx=2, fy=2)
-        front_text = await async_ocr(temp)
+    # ❌ REMOVE retry (heavy + slow)
+    if not front_text:
+        front_text = ""
 
     front_text = normalize_text(front_text)
 

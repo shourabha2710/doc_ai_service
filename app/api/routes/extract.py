@@ -15,10 +15,8 @@ async def extract_document(
     front_image: UploadFile = File(...),
     back_image: Optional[UploadFile] = File(None)
 ):
-    """
-    Extract document data using user selected document type
-    Supports front + back image
-    """
+
+    logging.info(f"🔥 Incoming request: {document_type}")
 
     front_path = save_temp_file(front_image)
     back_path = None
@@ -34,11 +32,13 @@ async def extract_document(
             back_path=back_path
         )
 
+        logging.info("✅ Extraction completed")
+
         return result
 
     except Exception as e:
 
-        logging.exception("Error processing document")
+        logging.exception("❌ Error processing document")
 
         raise HTTPException(status_code=500, detail=str(e))
 
