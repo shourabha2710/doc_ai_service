@@ -1,46 +1,89 @@
 from paddleocr import PaddleOCR
 import cv2
+import numpy as np
 from .base_ocr import OCREngine
 
 
 class PaddleOCREngine(OCREngine):
 
     def __init__(self):
-
         self.ocr = PaddleOCR(
             use_angle_cls=True,
             lang="en",
-            use_gpu=False
+            rec=True,
+            use_gpu=False,
+            det_db_thresh=0.3,
+            det_db_box_thresh=0.5,
+            det_limit_side_len=1280
         )
 
     def preprocess(self, image):
+        if image is None:
+            return None
 
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # Resize only (keep color)
+        h, w = image.shape[:2]
+        scale = 1.5
 
-        gray = cv2.bilateralFilter(gray, 9, 75, 75)
+        image = cv2.resize(
+            image,
+            (int(w * scale), int(h * scale)),
+            interpolation=cv2.INTER_CUBIC
+        )
 
-        gray = cv2.resize(gray, None, fx=2, fy=2)
-
-        return gray
+        return image
 
     def extract_text(self, image):
 
         image = self.preprocess(image)
 
-        result = self.ocr.ocr(image)
+        if image is None:
+            return ""
+
+        # Ensure 3-channel
+        if len(image.shape) == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+        try:
+            result = self.ocr.ocr(image, cls=True)
+        except Exception as e:
+            print(f"OCR Error: {e}")
+            return ""
+
+        if not result:
+            return ""
 
         words = []
 
-        if result:
+        for res in result:
+            if res is None:
+                continue
 
-            for line in result:
+            for line in res:
+                if line is None or len(line) < 2:
+                    continue
 
-                for word in line:
+                text = line[1][0]
+                conf = line[1][1]
 
-                    text = word[1][0]
-                    conf = word[1][1]
+                if text and conf and conf > 0.5:
+                    words.append(text)
 
-                    if conf > 0.6:
-                        words.append(text)
+        lines = []
 
-        return " ".join(words)
+        for res in result:
+            if res is None:
+                continue
+            
+            for line in res:
+                if line is None or len(line) < 2:
+                    continue
+                
+                text = line[1][0]
+                conf = line[1][1]
+
+                if text and conf and conf > 0.5:
+                    lines.append(text.strip())
+
+        # 🔥 return multi-line text
+        return "\n".join(lines)
