@@ -4,7 +4,7 @@ import logging
 import re
 import numpy as np
 
-from app.ocr.tesseract_ocr import TesseractOCR
+from app.ocr.paddle_ocr import PaddleOCREngine
 
 from app.image_processing.preprocess import preprocess
 from app.extraction.aadhaar_extractor import extract_aadhaar
@@ -17,7 +17,6 @@ from app.extraction.voterid_extractor import extract_voterid
 from app.image_processing.blur_detection import detect_blur
 from app.image_processing.auto_rotate import auto_rotate_image
 from app.image_processing.document_edge import detect_document_edges
-from app.ocr.layout_ocr import layout_aware_ocr
 
 from app.schemas.extraction_schema import (
     ExtractionResult,
@@ -33,41 +32,22 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-tesseract_engine = TesseractOCR()
+ocr_engine = PaddleOCREngine()
 
 
-# -----------------------------
-# PARALLEL OCR
-# -----------------------------
 async def async_ocr(image):
 
     loop = asyncio.get_running_loop()
 
-    tess_future = loop.run_in_executor(
+    text = await loop.run_in_executor(
         None,
-        tesseract_engine.extract_text,
+        ocr_engine.extract_text,
         image
     )
-
-    layout_future = loop.run_in_executor(
-        None,
-        layout_aware_ocr,
-        image
-    )
-
-    tess_text, layout_text = await asyncio.gather(
-        tess_future,
-        layout_future
-    )
-
-    text = tess_text + "\n" + layout_text
 
     return text
 
 
-# -----------------------------
-# MAIN DOCUMENT PIPELINE
-# -----------------------------
 async def process_document_async(
     document_type: str,
     front_path: str,
@@ -99,7 +79,7 @@ async def process_document_async(
         )
 
     # -----------------------------
-    # QR DETECTION (ORIGINAL IMAGE)
+    # QR DETECTION
     # -----------------------------
     qr_data = extract_aadhaar_qr(front_image)
 
@@ -116,7 +96,7 @@ async def process_document_async(
     front_image, cropped = detect_document_edges(front_image)
 
     # -----------------------------
-    # IMAGE RESIZE
+    # RESIZE
     # -----------------------------
     h, w = front_image.shape[:2]
 
@@ -138,16 +118,12 @@ async def process_document_async(
     # -----------------------------
     front_text = await async_ocr(front_image)
 
-    # -----------------------------
-    # CLEAN TEXT
-    # (IMPORTANT: Hindi remove nahi karna)
-    # -----------------------------
     front_text = re.sub(r"[ \t]+", " ", front_text)
 
     back_text = ""
 
     # -----------------------------
-    # BACK IMAGE OCR
+    # BACK OCR
     # -----------------------------
     if back_path:
 
@@ -180,7 +156,7 @@ async def process_document_async(
     document_type = document_type.lower()
 
     # -----------------------------
-    # AADHAAR (QR PRIORITY)
+    # AADHAAR
     # -----------------------------
     if document_type == "aadhaar":
 
@@ -206,41 +182,21 @@ async def process_document_async(
                 **extract_aadhaar(text)
             )
 
-    # -----------------------------
-    # PAN
-    # -----------------------------
     elif document_type == "pan":
 
-        pan_fields = PanFields(
-            **extract_pan(text)
-        )
+        pan_fields = PanFields(**extract_pan(text))
 
-    # -----------------------------
-    # PASSPORT
-    # -----------------------------
     elif document_type == "passport":
 
-        passport_fields = PassportFields(
-            **extract_passport(text)
-        )
+        passport_fields = PassportFields(**extract_passport(text))
 
-    # -----------------------------
-    # DRIVING LICENSE
-    # -----------------------------
     elif document_type == "dl":
 
-        dl_fields = DLFields(
-            **extract_dl(text)
-        )
+        dl_fields = DLFields(**extract_dl(text))
 
-    # -----------------------------
-    # VOTER ID
-    # -----------------------------
     elif document_type == "voter":
 
-        voterid_fields = VoterIDFields(
-            **extract_voterid(text)
-        )
+        voterid_fields = VoterIDFields(**extract_voterid(text))
 
     return ExtractionResult(
 
