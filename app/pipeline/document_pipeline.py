@@ -4,7 +4,7 @@ import logging
 import re
 import numpy as np
 
-from app.ocr.tesseract_ocr import TesseractOCR
+from app.ocr.paddle_ocr import PaddleOCREngine
 
 from app.image_processing.preprocess import preprocess
 from app.extraction.aadhaar_extractor import extract_aadhaar
@@ -17,7 +17,6 @@ from app.extraction.voterid_extractor import extract_voterid
 from app.image_processing.blur_detection import detect_blur
 from app.image_processing.auto_rotate import auto_rotate_image
 from app.image_processing.document_edge import detect_document_edges
-from app.ocr.layout_ocr import layout_aware_ocr
 
 from app.schemas.extraction_schema import (
     ExtractionResult,
@@ -33,51 +32,20 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-tesseract_engine = TesseractOCR()
+ocr_engine = PaddleOCREngine()
 
 
-async def async_qr_ocr(image):
+async def async_ocr(image):
 
     loop = asyncio.get_running_loop()
 
-    qr_future = loop.run_in_executor(None, extract_aadhaar_qr, image)
-    tess_future = loop.run_in_executor(None, tesseract_engine.extract_text, image)
-    layout_future = loop.run_in_executor(None, layout_aware_ocr, image)
-
-    qr_data, tess_text, layout_text = await asyncio.gather(
-        qr_future,
-        tess_future,
-        layout_future
+    text = await loop.run_in_executor(
+        None,
+        ocr_engine.extract_text,
+        image
     )
 
-    text = tess_text + "\n" + layout_text
-
-    logging.info(f"Tesseract text: {tess_text}")
-    logging.info(f"Layout OCR text: {layout_text}")
-
-    return qr_data, text
-
-
-def detect_document_type(text):
-
-    text = text.lower()
-
-    if "income tax department" in text:
-        return "PAN"
-
-    if re.search(r"\d{4}\s?\d{4}\s?\d{4}", text):
-        return "Aadhaar"
-
-    if "passport" in text:
-        return "Passport"
-
-    if "driving licence" in text:
-        return "Driving License"
-
-    if "election commission" in text:
-        return "Voter ID"
-
-    return "Unknown"
+    return text
 
 
 async def process_document_async(
@@ -97,6 +65,9 @@ async def process_document_async(
             reason="Invalid front image"
         )
 
+    # -----------------------------
+    # BLUR CHECK
+    # -----------------------------
     blur_result = detect_blur(front_image)
 
     if blur_result["is_blurry"]:
@@ -107,35 +78,53 @@ async def process_document_async(
             reason="Front image too blurry"
         )
 
+    # -----------------------------
+    # QR DETECTION
+    # -----------------------------
+    qr_data = extract_aadhaar_qr(front_image)
+
+    logging.info(f"QR detected: {qr_data}")
+
+    # -----------------------------
+    # AUTO ROTATE
+    # -----------------------------
     front_image, rotation_angle = auto_rotate_image(front_image)
 
+    # -----------------------------
+    # DOCUMENT EDGE DETECTION
+    # -----------------------------
     front_image, cropped = detect_document_edges(front_image)
 
+    # -----------------------------
+    # RESIZE
+    # -----------------------------
     h, w = front_image.shape[:2]
 
     max_dim = 1500
     scale = max_dim / max(h, w)
 
     if scale < 1:
+
         front_image = cv2.resize(
-        front_image,
-        None,
-        fx=scale,
-        fy=scale,
-        interpolation=cv2.INTER_AREA
-    )
+            front_image,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_AREA
+        )
 
-    qr_data, front_text = await async_qr_ocr(front_image)
+    # -----------------------------
+    # OCR FRONT
+    # -----------------------------
+    front_text = await async_ocr(front_image)
 
-    # clean OCR text but preserve line structure
-    front_text = re.sub(r"[^\x00-\x7F\n]+", " ", front_text)
     front_text = re.sub(r"[ \t]+", " ", front_text)
-
-    logging.info(f"Raw OCR text: {front_text}")
 
     back_text = ""
 
-    # ---------- BACK IMAGE OCR ----------
+    # -----------------------------
+    # BACK OCR
+    # -----------------------------
     if back_path:
 
         back_image = cv2.imread(back_path)
@@ -152,9 +141,8 @@ async def process_document_async(
                 interpolation=cv2.INTER_CUBIC
             )
 
-            _, back_text = await async_qr_ocr(back_image)
+            back_text = await async_ocr(back_image)
 
-    # merge both texts
     text = front_text + "\n" + back_text
 
     logging.info(text)
@@ -167,9 +155,32 @@ async def process_document_async(
 
     document_type = document_type.lower()
 
+    # -----------------------------
+    # AADHAAR
+    # -----------------------------
     if document_type == "aadhaar":
 
-        aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
+        if qr_data:
+
+            logging.info("Using Aadhaar QR data")
+
+            qr = qr_data[0]
+
+            aadhaar_fields = AadhaarFields(
+                aadhaar_number=qr.get("aadhaar_number"),
+                name=qr.get("name"),
+                dob=qr.get("dob"),
+                gender=qr.get("gender"),
+                address=qr.get("address")
+            )
+
+        else:
+
+            logging.info("Using OCR Aadhaar extraction")
+
+            aadhaar_fields = AadhaarFields(
+                **extract_aadhaar(text)
+            )
 
     elif document_type == "pan":
 
