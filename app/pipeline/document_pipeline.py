@@ -5,7 +5,6 @@ import re
 import numpy as np
 
 from app.ocr.tesseract_ocr import TesseractOCR
-from app.ocr.easyocr_engine import EasyOCREngine
 
 from app.image_processing.preprocess import preprocess
 from app.extraction.aadhaar_extractor import extract_aadhaar
@@ -35,39 +34,24 @@ logging.basicConfig(
 )
 
 tesseract_engine = TesseractOCR()
-easyocr_engine = EasyOCREngine()
 
 
 async def async_qr_ocr(image):
 
     loop = asyncio.get_running_loop()
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
     qr_future = loop.run_in_executor(None, extract_aadhaar_qr, image)
+    tess_future = loop.run_in_executor(None, tesseract_engine.extract_text, image)
+    layout_future = loop.run_in_executor(None, layout_aware_ocr, image)
 
-    easy_future = loop.run_in_executor(None, easyocr_engine.extract_text, gray)
-
-    tess_future = loop.run_in_executor(None, tesseract_engine.extract_text, gray)
-
-    layout_future = loop.run_in_executor(None, layout_aware_ocr, gray)
-
-    qr_data, easy_text, tess_text, layout_text = await asyncio.gather(
+    qr_data, tess_text, layout_text = await asyncio.gather(
         qr_future,
-        easy_future,
         tess_future,
         layout_future
     )
 
-    candidates = [
-        easy_text,
-        tess_text,
-        layout_text
-    ]
+    text = tess_text + "\n" + layout_text
 
-    text = layout_text + "\n" + easy_text + "\n" + tess_text
-
-    logging.info(f"EasyOCR text: {easy_text}")
     logging.info(f"Tesseract text: {tess_text}")
     logging.info(f"Layout OCR text: {layout_text}")
 
@@ -127,15 +111,27 @@ async def process_document_async(
 
     front_image, cropped = detect_document_edges(front_image)
 
-    front_image = cv2.resize(
+    h, w = front_image.shape[:2]
+
+    max_dim = 1500
+    scale = max_dim / max(h, w)
+
+    if scale < 1:
+        front_image = cv2.resize(
         front_image,
         None,
-        fx=2,
-        fy=2,
-        interpolation=cv2.INTER_CUBIC
+        fx=scale,
+        fy=scale,
+        interpolation=cv2.INTER_AREA
     )
 
     qr_data, front_text = await async_qr_ocr(front_image)
+
+    # clean OCR text but preserve line structure
+    front_text = re.sub(r"[^\x00-\x7F\n]+", " ", front_text)
+    front_text = re.sub(r"[ \t]+", " ", front_text)
+
+    logging.info(f"Raw OCR text: {front_text}")
 
     back_text = ""
 

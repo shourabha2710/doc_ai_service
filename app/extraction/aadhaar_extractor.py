@@ -1,6 +1,7 @@
 import re
 import logging
 
+
 def extract_aadhaar(text: str):
 
     aadhaar_number = None
@@ -12,16 +13,31 @@ def extract_aadhaar(text: str):
     try:
 
         # -------------------------
-        # Aadhaar number
+        # Clean OCR Noise
         # -------------------------
 
-        match = re.search(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text)
-
-        if match:
-            aadhaar_number = match.group()
+        text = re.sub(r"[|]", " ", text)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n+", "\n", text)
 
         # -------------------------
-        # DOB
+        # Aadhaar Number Detection
+        # -------------------------
+
+        aadhaar_candidates = re.findall(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text)
+
+        for candidate in aadhaar_candidates:
+
+            candidate_clean = candidate.replace(" ", "")
+
+            vid_check = re.search(rf"{candidate}\s*\d{{4}}", text)
+
+            if not vid_check:
+                aadhaar_number = candidate_clean
+                break
+
+        # -------------------------
+        # DOB Detection
         # -------------------------
 
         dob_patterns = [
@@ -36,6 +52,7 @@ def extract_aadhaar(text: str):
             match = re.search(pattern, text, re.IGNORECASE)
 
             if match:
+
                 dob = match.group()
 
                 dob = (
@@ -48,47 +65,40 @@ def extract_aadhaar(text: str):
                 break
 
         # -------------------------
-        # Gender
+        # Gender Detection
         # -------------------------
-
-        if re.search(r"\bmale\b", text, re.IGNORECASE):
-            gender = "Male"
 
         if re.search(r"\bfemale\b", text, re.IGNORECASE):
             gender = "Female"
 
+        elif re.search(r"\bmale\b", text, re.IGNORECASE):
+            gender = "Male"
+
         # -------------------------
-        # NAME DETECTION
+        # Name Detection
         # -------------------------
 
-        clean_text = re.sub(r"\d", "", text)
+        name_candidates = re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text)
 
-        words = clean_text.split()
+        blacklist = [
+            "Income Tax",
+            "Government Of",
+            "Unique Identification",
+            "Authority Of",
+            "Government India",
+            "India Authority"
+        ]
 
-        english_candidates = []
+        for candidate in name_candidates:
 
-        for i in range(len(words) - 1):
-
-            candidate = words[i] + " " + words[i + 1]
-
-            if any(k in candidate.lower() for k in [
-                "male",
-                "female",
-                "birth",
-                "aadhaar",
-                "vid",
-                "authority"
-            ]):
+            if any(b.lower() in candidate.lower() for b in blacklist):
                 continue
 
-            if re.match(r"^[A-Za-z ]+$", candidate):
-                english_candidates.append(candidate)
-
-        if english_candidates:
-            name = english_candidates[0]
+            name = candidate
+            break
 
         # -------------------------
-        # ADDRESS DETECTION
+        # Address Detection
         # -------------------------
 
         lines = [l.strip() for l in text.split("\n") if l.strip()]
@@ -99,13 +109,17 @@ def extract_aadhaar(text: str):
 
                 address_lines = []
 
-                for j in range(i + 1, min(i + 6, len(lines))):
+                for j in range(i + 1, min(i + 8, len(lines))):
 
                     candidate = lines[j]
 
                     # stop if aadhaar number appears
                     if re.search(r"\d{4}\s?\d{4}\s?\d{4}", candidate):
                         break
+
+                    # skip hindi lines
+                    if re.search(r"[^\x00-\x7F]", candidate):
+                        continue
 
                     address_lines.append(candidate)
 
@@ -114,12 +128,11 @@ def extract_aadhaar(text: str):
                     break
 
         # -------------------------
-        # CLEAN ADDRESS
+        # Address Cleanup
         # -------------------------
 
         if address:
 
-            # remove unwanted words
             address = re.sub(
                 r"(government of india|unique identification authority of india|aadhaar)",
                 "",
@@ -127,7 +140,8 @@ def extract_aadhaar(text: str):
                 flags=re.IGNORECASE
             )
 
-            # remove extra spaces
+            address = re.sub(r"[^\x00-\x7F]+", " ", address)
+            address = re.sub(r"[,:]+", " ", address)
             address = re.sub(r"\s+", " ", address).strip()
 
     except Exception as e:
@@ -135,7 +149,6 @@ def extract_aadhaar(text: str):
         logging.warning(f"Aadhaar extraction failed: {str(e)}")
 
     return {
-
         "aadhaar_number": aadhaar_number,
         "name": name,
         "dob": dob,
