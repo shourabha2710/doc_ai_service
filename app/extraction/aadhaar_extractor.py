@@ -11,31 +11,62 @@ def clean_text(text):
     return text
 
 
-def score_name(candidate):
+def extract_name(lines):
 
-    score = 0
+    for line in lines:
 
-    if len(candidate.split()) == 2:
-        score += 3
+        # Remove relations
+        line = re.sub(r"(S/O|D/O|W/O)[: ]*", "", line, flags=re.IGNORECASE)
 
-    if len(candidate) > 6:
-        score += 2
+        # Candidate name
+        if (
+            len(line.split()) >= 2
+            and not re.search(r"\d", line)
+            and len(line) < 40
+        ):
 
-    if candidate.isalpha() or " " in candidate:
-        score += 2
+            blacklist = [
+                "government",
+                "india",
+                "authority",
+                "identification",
+                "address"
+            ]
 
-    blacklist = [
-        "Government",
-        "India",
-        "Authority",
-        "Identification",
-        "Aadhaar"
-    ]
+            if not any(b in line.lower() for b in blacklist):
 
-    if any(b.lower() in candidate.lower() for b in blacklist):
-        score -= 5
+                return line.strip()
 
-    return score
+    return None
+
+
+def extract_address(lines):
+
+    address_lines = []
+    capture = False
+
+    for line in lines:
+
+        if "address" in line.lower():
+            capture = True
+            continue
+
+        if capture:
+
+            if re.search(r"\d{4}\s?\d{4}\s?\d{4}", line):
+                break
+
+            if len(line) > 3:
+                address_lines.append(line)
+
+    if address_lines:
+        address = " ".join(address_lines)
+
+        address = re.sub(r"\s+", " ", address)
+
+        return address
+
+    return None
 
 
 def extract_aadhaar(text: str):
@@ -50,6 +81,8 @@ def extract_aadhaar(text: str):
 
         text = clean_text(text)
 
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
+
         # -------------------------
         # Aadhaar Number
         # -------------------------
@@ -61,6 +94,7 @@ def extract_aadhaar(text: str):
             vid_check = re.search(rf"{candidate}\s*\d{{4}}", text)
 
             if not vid_check:
+
                 aadhaar_number = candidate.replace(" ", "")
                 break
 
@@ -84,62 +118,16 @@ def extract_aadhaar(text: str):
             gender = "Male"
 
         # -------------------------
-        # NAME DETECTION (SCORING)
+        # Name
         # -------------------------
 
-        candidates = re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text)
-
-        best_score = -1
-
-        for c in candidates:
-
-            s = score_name(c)
-
-            if s > best_score:
-                best_score = s
-                name = c
+        name = extract_name(lines)
 
         # -------------------------
-        # ADDRESS DETECTION
+        # Address
         # -------------------------
 
-        lines = [l.strip() for l in text.split("\n") if l.strip()]
-
-        for i, line in enumerate(lines):
-
-            if "address" in line.lower():
-
-                address_lines = []
-
-                for j in range(i + 1, min(i + 8, len(lines))):
-
-                    candidate = lines[j]
-
-                    if re.search(r"\d{4}\s?\d{4}\s?\d{4}", candidate):
-                        break
-
-                    if re.search(r"[^\x00-\x7F]", candidate):
-                        continue
-
-                    address_lines.append(candidate)
-
-                if address_lines:
-                    address = " ".join(address_lines)
-                    break
-
-        # Clean address
-        if address:
-
-            address = re.sub(
-                r"(government of india|unique identification authority of india|aadhaar)",
-                "",
-                address,
-                flags=re.IGNORECASE
-            )
-
-            address = re.sub(r"[^\x00-\x7F]+", " ", address)
-            address = re.sub(r"[,:]+", " ", address)
-            address = re.sub(r"\s+", " ", address).strip()
+        address = extract_address(lines)
 
     except Exception as e:
 
