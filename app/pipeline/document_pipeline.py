@@ -52,32 +52,7 @@ async def async_qr_ocr(image):
 
     text = tess_text + "\n" + layout_text
 
-    logging.info(f"Tesseract text: {tess_text}")
-    logging.info(f"Layout OCR text: {layout_text}")
-
     return qr_data, text
-
-
-def detect_document_type(text):
-
-    text = text.lower()
-
-    if "income tax department" in text:
-        return "PAN"
-
-    if re.search(r"\d{4}\s?\d{4}\s?\d{4}", text):
-        return "Aadhaar"
-
-    if "passport" in text:
-        return "Passport"
-
-    if "driving licence" in text:
-        return "Driving License"
-
-    if "election commission" in text:
-        return "Voter ID"
-
-    return "Unknown"
 
 
 async def process_document_async(
@@ -118,24 +93,21 @@ async def process_document_async(
 
     if scale < 1:
         front_image = cv2.resize(
-        front_image,
-        None,
-        fx=scale,
-        fy=scale,
-        interpolation=cv2.INTER_AREA
-    )
+            front_image,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_AREA
+        )
 
     qr_data, front_text = await async_qr_ocr(front_image)
 
-    # clean OCR text but preserve line structure
+    # Clean OCR text
     front_text = re.sub(r"[^\x00-\x7F\n]+", " ", front_text)
     front_text = re.sub(r"[ \t]+", " ", front_text)
 
-    logging.info(f"Raw OCR text: {front_text}")
-
     back_text = ""
 
-    # ---------- BACK IMAGE OCR ----------
     if back_path:
 
         back_image = cv2.imread(back_path)
@@ -154,7 +126,6 @@ async def process_document_async(
 
             _, back_text = await async_qr_ocr(back_image)
 
-    # merge both texts
     text = front_text + "\n" + back_text
 
     logging.info(text)
@@ -167,9 +138,31 @@ async def process_document_async(
 
     document_type = document_type.lower()
 
+    # -------------------------
+    # AADHAAR (QR PRIORITY)
+    # -------------------------
+
     if document_type == "aadhaar":
 
-        aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
+        if qr_data:
+
+            logging.info("Using Aadhaar QR data")
+
+            qr = qr_data[0]
+
+            aadhaar_fields = AadhaarFields(
+                aadhaar_number=qr.get("aadhaar_number"),
+                name=qr.get("name"),
+                dob=qr.get("dob"),
+                gender=qr.get("gender"),
+                address=qr.get("address")
+            )
+
+        else:
+
+            logging.info("Using OCR Aadhaar extraction")
+
+            aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
 
     elif document_type == "pan":
 
