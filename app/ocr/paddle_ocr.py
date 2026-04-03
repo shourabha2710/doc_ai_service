@@ -9,7 +9,12 @@ class PaddleOCREngine(OCREngine):
     def __init__(self):
         self.ocr = PaddleOCR(
             use_angle_cls=True,
-            lang="en"
+            lang="en",
+            rec=True,
+            use_gpu=False,
+            det_db_thresh=0.3,
+            det_db_box_thresh=0.5,
+            det_limit_side_len=1280
         )
 
     def preprocess(self, image):
