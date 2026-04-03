@@ -13,16 +13,14 @@ def clean_text(text):
 
 def extract_name(lines):
 
-    for line in lines:
+    for i, line in enumerate(lines):
 
-        # Remove relations
-        line = re.sub(r"(S/O|D/O|W/O)[: ]*", "", line, flags=re.IGNORECASE)
+        clean = re.sub(r"(S/O|D/O|W/O)[: ]*", "", line, flags=re.IGNORECASE)
 
-        # Candidate name
         if (
-            len(line.split()) >= 2
-            and not re.search(r"\d", line)
-            and len(line) < 40
+            len(clean.split()) >= 2
+            and not re.search(r"\d", clean)
+            and len(clean) < 40
         ):
 
             blacklist = [
@@ -30,12 +28,13 @@ def extract_name(lines):
                 "india",
                 "authority",
                 "identification",
-                "address"
+                "address",
+                "male",
+                "female"
             ]
 
-            if not any(b in line.lower() for b in blacklist):
-
-                return line.strip()
+            if not any(b in clean.lower() for b in blacklist):
+                return clean.strip()
 
     return None
 
@@ -102,10 +101,9 @@ def extract_aadhaar(text: str):
         # DOB
         # -------------------------
 
-        dob_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
-
+        dob_match = re.search(r"(?:DOB[: ]*)?(\d{2}/\d{2}/\d{4})", text, re.IGNORECASE)
         if dob_match:
-            dob = dob_match.group()
+            dob = dob_match.group(1)
 
         # -------------------------
         # Gender
