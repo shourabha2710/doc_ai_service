@@ -13,9 +13,7 @@ def get_ocr():
 
         ocr_instance = PaddleOCR(
             use_angle_cls=True,
-            lang="en",
-            use_gpu=False,
-            show_log=False
+            lang="en"
         )
 
     return ocr_instance
