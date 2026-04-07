@@ -4,6 +4,7 @@ import logging
 import re
 
 from app.ocr.paddle_ocr import PaddleOCREngine
+from app.llm.phi_extractor import extract_with_phi
 
 from app.image_processing.preprocess import preprocess
 from app.extraction.aadhaar_extractor import extract_aadhaar
@@ -134,19 +135,21 @@ async def process_document_async(
     logging.info(f"OCR TEXT: {text}")
 
     # ---------------- FIELD EXTRACTION ----------------
+
     aadhaar_fields = None
     pan_fields = None
     passport_fields = None
     dl_fields = None
     voterid_fields = None
-
+    
     document_type = document_type.lower()
-
+    
+    # ---------------- AADHAAR ----------------
     if document_type == "aadhaar":
-
+    
         if qr_data:
             qr = qr_data[0]
-
+    
             aadhaar_fields = AadhaarFields(
                 aadhaar_number=qr.get("aadhaar_number"),
                 name=qr.get("name"),
@@ -154,20 +157,76 @@ async def process_document_async(
                 gender=qr.get("gender"),
                 address=qr.get("address")
             )
+    
         else:
-            aadhaar_fields = AadhaarFields(**extract_aadhaar(text))
-
+        
+            regex_result = extract_aadhaar(text)
+    
+            # AI fallback
+            if not regex_result.get("aadhaar_number") or not regex_result.get("name"):
+            
+                ai_result = extract_with_phi(text, "aadhaar")
+    
+                if ai_result:
+                    regex_result.update(ai_result)
+    
+            aadhaar_fields = AadhaarFields(**regex_result)
+    
+    # ---------------- PAN ----------------
     elif document_type == "pan":
-        pan_fields = PanFields(**extract_pan(text))
-
+    
+        regex_result = extract_pan(text)
+    
+        if not regex_result.get("pan_number"):
+        
+            ai_result = extract_with_phi(text, "pan")
+    
+            if ai_result:
+                regex_result.update(ai_result)
+    
+        pan_fields = PanFields(**regex_result)
+    
+    # ---------------- PASSPORT ----------------
     elif document_type == "passport":
-        passport_fields = PassportFields(**extract_passport(text))
-
+    
+        regex_result = extract_passport(text)
+    
+        if not regex_result.get("passport_number"):
+        
+            ai_result = extract_with_phi(text, "passport")
+    
+            if ai_result:
+                regex_result.update(ai_result)
+    
+        passport_fields = PassportFields(**regex_result)
+    
+    # ---------------- DL ----------------
     elif document_type == "dl":
-        dl_fields = DLFields(**extract_dl(text))
-
+    
+        regex_result = extract_dl(text)
+    
+        if not regex_result.get("dl_number"):
+        
+            ai_result = extract_with_phi(text, "dl")
+    
+            if ai_result:
+                regex_result.update(ai_result)
+    
+        dl_fields = DLFields(**regex_result)
+    
+    # ---------------- VOTER ----------------
     elif document_type == "voter":
-        voterid_fields = VoterIDFields(**extract_voterid(text))
+    
+        regex_result = extract_voterid(text)
+    
+        if not regex_result.get("voter_id"):
+        
+            ai_result = extract_with_phi(text, "voter")
+    
+            if ai_result:
+                regex_result.update(ai_result)
+    
+        voterid_fields = VoterIDFields(**regex_result)
 
     return ExtractionResult(
         status="success",
